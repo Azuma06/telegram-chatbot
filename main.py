@@ -3,6 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
 import calendar
 import datetime
+from firebase_config import add_appointment, is_time_slot_available
 
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
 BOT_USERNAME: Final = '@secrrr_bot'
@@ -111,9 +112,16 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     service = context.user_data['service']
     price = context.user_data['price']
-    date = context.user_data['date'].strftime("%d/%m/%Y")
+    date = context.user_data['date'].strftime("%Y-%m-%d")
+    user_id = update.effective_user.id
 
-    response = f"Ótimo! Você agendou {service} por R${price} no dia {date} às {time_slot}. Esperamos você!"
+    # Check if the time slot is available
+    if is_time_slot_available(date, time_slot):
+        add_appointment(user_id, service, date, time_slot)
+        response = f"Ótimo! Você agendou {service} por R${price} no dia {date} às {time_slot}. Esperamos você!"
+    else:
+        response = f"Desculpe, o horário {time_slot} no dia {date} já está ocupado. Por favor, escolha outro horário."
+
     await query.edit_message_text(text=response)
     return ConversationHandler.END
 
