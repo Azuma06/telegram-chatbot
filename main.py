@@ -1,6 +1,8 @@
 from typing import Final
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
+import calendar
+import datetime
 
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
 BOT_USERNAME: Final = '@secrrr_bot'
@@ -13,6 +15,9 @@ SERVICES = {
     '4': ('Pedicure', 40),
     '5': ('Tintura', 70)
 }
+
+# Define conversation states
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME = range(3)
 
 # commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -28,9 +33,7 @@ async def agendar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Escolha um dos serviços abaixo:', reply_markup=reply_markup)
-
-async def custom_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('TODO: custom command.')
+    return CHOOSING_SERVICE
 
 # Handle button callbacks
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,11 +43,79 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service_key = query.data
     if service_key in SERVICES:
         service_name, service_price = SERVICES[service_key]
-        response = f"Você escolheu {service_name} por R${service_price}. Por favor, confirme seu agendamento."
+        context.user_data['service'] = service_name
+        context.user_data['price'] = service_price
+        await send_calendar(update, context)
+        return CHOOSING_DATE
     else:
-        response = "Desculpe, essa opção não é válida."
+        await query.edit_message_text(text="Desculpe, essa opção não é válida.")
+        return ConversationHandler.END
 
+async def send_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.datetime.now()
+    keyboard = [
+        [InlineKeyboardButton("◀️", callback_data="prev_month"), 
+         InlineKeyboardButton(f"{calendar.month_name[now.month]} {now.year}", callback_data="ignore"),
+         InlineKeyboardButton("▶️", callback_data="next_month")]
+    ]
+    for week in calendar.monthcalendar(now.year, now.month):
+        row = []
+        for day in week:
+            if day == 0:
+                row.append(InlineKeyboardButton(" ", callback_data="ignore"))
+            elif day < now.day:
+                row.append(InlineKeyboardButton(str(day), callback_data="ignore"))
+            else:
+                row.append(InlineKeyboardButton(str(day), callback_data=f"day_{day}"))
+        keyboard.append(row)
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    message = "Para qual dia você deseja agendar o serviço?"
+    if isinstance(update, Update):
+        await update.callback_query.edit_message_text(text=message, reply_markup=reply_markup)
+    else:
+        await update.message.reply_text(text=message, reply_markup=reply_markup)
+
+async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+    now = datetime.datetime.now()
+    if data == "ignore":
+        return
+    elif data == "prev_month":
+        context.user_data['temp_month'] = max(1, now.month - 1)
+        await send_calendar(update, context)
+    elif data == "next_month":
+        context.user_data['temp_month'] = min(12, now.month + 1)
+        await send_calendar(update, context)
+    elif data.startswith("day_"):
+        day = int(data[4:])
+        context.user_data['date'] = datetime.date(now.year, now.month, day)
+        await show_time_slots(update.effective_chat.id, context)
+        return CHOOSING_TIME
+
+async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    time_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+    keyboard = [[InlineKeyboardButton(slot, callback_data=f"time_{slot}") for slot in time_slots[i:i+3]] for i in range(0, len(time_slots), 3)]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    message = "Escolha um horário disponível:"
+    await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
+async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    time_slot = query.data[5:]  # remove the "time_" prefix
+    context.user_data['time'] = time_slot
+
+    service = context.user_data['service']
+    price = context.user_data['price']
+    date = context.user_data['date'].strftime("%d/%m/%Y")
+
+    response = f"Ótimo! Você agendou {service} por R${price} no dia {date} às {time_slot}. Esperamos você!"
     await query.edit_message_text(text=response)
+    return ConversationHandler.END
 
 # responses
 def handle_response(text: str) -> str:
@@ -76,19 +147,23 @@ if __name__ == "__main__":
     print('Starting bot...')
     app = Application.builder().token(TOKEN).build()
 
-    # commands - these should come BEFORE the text message handler
+    # Set up conversation handler for appointment scheduling
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('agendar', agendar_command)],
+        states={
+            CHOOSING_SERVICE: [CallbackQueryHandler(button_callback)],
+            CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
+            CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)]
+        },
+        fallbacks=[CommandHandler('cancel', start_command)]  # You might want to create a cancel function
+    )
+
+    app.add_handler(conv_handler)
+
+    # Other handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('agendar', agendar_command))
-    app.add_handler(CommandHandler('custom', custom_command))
-
-    # Handle button presses
-    app.add_handler(CallbackQueryHandler(button_callback))
-
-    # messages - this comes AFTER all the command handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    # errors
     app.add_error_handler(error)
 
     # polls the bot
