@@ -2,8 +2,10 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Initialize Firebase
-cred = credentials.Certificate('path/to/your/serviceAccountKey.json')
+cred = credentials.Certificate('/workspaces/telegram-chatbot/sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
 firebase_admin.initialize_app(cred)
+
+
 
 db = firestore.client()
 
