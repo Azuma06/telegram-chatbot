@@ -68,5 +68,5 @@ This is a Telegram bot for scheduling appointments using Firebase as the backend
 - The bot owner can use the keyword `vapp` to view all scheduled appointments.
 
 ## License
-
-This project is licensed under the MIT License.
+TODO
+This project is licensed under the ... License.
