@@ -8,10 +8,12 @@ firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # Add an appointment to Firestore
-def add_appointment(user_id, service, date, time):
+def add_appointment(user_id, first_name, last_name, service, date, time):
     appointments_ref = db.collection('appointments')
     appointments_ref.add({
         'user_id': user_id,
+        'first_name': first_name,
+        'last_name': last_name,
         'service': service,
         'date': date,
         'time': time

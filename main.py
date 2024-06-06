@@ -57,21 +57,44 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.datetime.now()
+    
+    # Set default month and year if not in user data
+    year = context.user_data.get('year', now.year)
+    month = context.user_data.get('month', now.month)
+
+    # Update the year and month in the context
+    context.user_data['year'] = year
+    context.user_data['month'] = month
+
+    # Create the calendar for the specified month and year
+    cal = calendar.Calendar(firstweekday=6)  # Start the week with Sunday
+    month_days = cal.monthdayscalendar(year, month)
+
+    # Create navigation buttons
     keyboard = [
         [InlineKeyboardButton("◀️", callback_data="prev_month"), 
-         InlineKeyboardButton(f"{calendar.month_name[now.month]} {now.year}", callback_data="ignore"),
+         InlineKeyboardButton(f"{calendar.month_name[month]} {year}", callback_data="ignore"),
          InlineKeyboardButton("▶️", callback_data="next_month")]
     ]
-    for week in calendar.monthcalendar(now.year, now.month):
+    
+    # Create day names row
+    day_names = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
+    day_names_row = [InlineKeyboardButton(day, callback_data="ignore") for day in day_names]
+    keyboard.append(day_names_row)
+    
+    # Create the calendar days buttons
+    for week in month_days:
         row = []
         for day in week:
             if day == 0:
                 row.append(InlineKeyboardButton(" ", callback_data="ignore"))
-            elif day < now.day:
-                row.append(InlineKeyboardButton(str(day), callback_data="ignore"))
             else:
-                row.append(InlineKeyboardButton(str(day), callback_data=f"day_{day}"))
+                if year == now.year and month == now.month and day < now.day:
+                    row.append(InlineKeyboardButton(str(day), callback_data="ignore"))
+                else:
+                    row.append(InlineKeyboardButton(str(day), callback_data=f"day_{day}"))
         keyboard.append(row)
+
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = "Para qual dia você deseja agendar o serviço?"
     if isinstance(update, Update):
@@ -79,23 +102,39 @@ async def send_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(text=message, reply_markup=reply_markup)
 
+
 async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     data = query.data
     now = datetime.datetime.now()
+    year = context.user_data.get('year', now.year)
+    month = context.user_data.get('month', now.month)
+    
     if data == "ignore":
         return
     elif data == "prev_month":
-        context.user_data['temp_month'] = max(1, now.month - 1)
+        if month == 1:
+            month = 12
+            year -= 1
+        else:
+            month -= 1
+        context.user_data['year'] = year
+        context.user_data['month'] = month
         await send_calendar(update, context)
     elif data == "next_month":
-        context.user_data['temp_month'] = min(12, now.month + 1)
+        if month == 12:
+            month = 1
+            year += 1
+        else:
+            month += 1
+        context.user_data['year'] = year
+        context.user_data['month'] = month
         await send_calendar(update, context)
     elif data.startswith("day_"):
         day = int(data[4:])
-        context.user_data['date'] = datetime.date(now.year, now.month, day)
+        context.user_data['date'] = datetime.date(year, month, day)
         await show_time_slots(update.effective_chat.id, context)
         return CHOOSING_TIME
 
@@ -117,10 +156,12 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     price = context.user_data['price']
     date = context.user_data['date'].strftime("%Y-%m-%d")
     user_id = update.effective_user.id
+    first_name = update.effective_user.first_name
+    last_name = update.effective_user.last_name
 
     # Check if the time slot is available
     if is_time_slot_available(date, time_slot):
-        add_appointment(user_id, service, date, time_slot)
+        add_appointment(user_id, first_name, last_name, service, date, time_slot)
         response = f"Ótimo! Você agendou {service} por R${price} no dia {date} às {time_slot}. Esperamos você!"
     else:
         response = f"Desculpe, o horário {time_slot} no dia {date} já está ocupado. Por favor, escolha outro horário."
@@ -130,14 +171,14 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    OWNER_USER_ID = 123456789  # Replace with the actual user ID of the business owner
+    OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
 
     if user_id == OWNER_USER_ID:
         appointments = fetch_appointments()
         if appointments:
             response = "Here are the upcoming appointments:\n\n"
             for appointment in appointments:
-                response += (f"User ID: {appointment['user_id']}\n"
+                response += (f"User: {appointment['first_name']} {appointment['last_name']} ({appointment['user_id']})\n"
                              f"Service: {appointment['service']}\n"
                              f"Date: {appointment['date']}\n"
                              f"Time: {appointment['time']}\n\n")
@@ -146,7 +187,19 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
         
         await update.message.reply_text(response)
     else:
-        await update.message.reply_text("You do not have permission to view the appointments.")
+        # Fetch only user's appointments
+        user_appointments = fetch_appointments(user_id=user_id)
+        if user_appointments:
+            response = "Here are your upcoming appointments:\n\n"
+            for appointment in user_appointments:
+                response += (f"Service: {appointment['service']}\n"
+                             f"Date: {appointment['date']}\n"
+                             f"Time: {appointment['time']}\n\n")
+        else:
+            response = "You have no appointments."
+        
+        await update.message.reply_text(response)
+
 
 async def cancel_appointment_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -223,6 +276,7 @@ if __name__ == "__main__":
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
+    app.add_handler(CommandHandler('view_appointments', view_appointments_command)) 
     app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
     app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
