@@ -1,11 +1,9 @@
-from multiprocessing import context
-from turtle import update
 from typing import Final
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
 import calendar
 import datetime
-from firebase_config import add_appointment, fetch_appointments, is_time_slot_available
+from firebase_config import add_appointment, is_time_slot_available, fetch_appointments
 
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
 BOT_USERNAME: Final = '@secrrr_bot'
@@ -35,7 +33,7 @@ async def agendar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for key, value in SERVICES.items()
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Escolha um dos serviços abaixo:', repl                                                                                                                                                                                                                                                                            y_markup=reply_markup)
+    await update.message.reply_text('Escolha um dos serviços abaixo:', reply_markup=reply_markup)
     return CHOOSING_SERVICE
 
 # Handle button callbacks
@@ -130,7 +128,7 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
 # New command handler to view appointments
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
+    OWNER_USER_ID = 123456789  # Replace with the actual user ID of the business owner
 
     if user_id == OWNER_USER_ID:
         appointments = fetch_appointments()
@@ -148,7 +146,6 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
     else:
         await update.message.reply_text("You do not have permission to view the appointments.")
 
-
 # responses
 def handle_response(text: str) -> str:
     processed: str = text.lower()
@@ -158,7 +155,6 @@ def handle_response(text: str) -> str:
 
     if 'tudo bem' in processed:
         return 'eu estou bem!'
-            
 
     return 'Eu nao entendi o que voce digitou...'
 
@@ -167,6 +163,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_type: str = update.message.chat.type
 
     print(f'User ({update.message.chat.id}) in {chat_type}: "{text}"')
+
+    if 'vapp' in text.lower():
+        await view_appointments_command(update, context)
+        return
 
     response: str = handle_response(text)
 
@@ -196,7 +196,6 @@ if __name__ == "__main__":
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('view_appointments', view_appointments_command))  # Add this line
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)
 
