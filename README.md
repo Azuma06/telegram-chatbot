@@ -11,13 +11,13 @@ projeto SABAO
 
 - [ ] gerenciar feriados
 
-- [ ] checar os horarios que marcou (user)
+- [x] checar os horarios que marcou (user)
 
 - [x] cancelar operaçao
 
 - [x] cancelar horario marcado
 
-- [ ] save usename, not only user ID
+- [x] save usename, not only user ID
 
 # Telegram Appointment Bot
 
