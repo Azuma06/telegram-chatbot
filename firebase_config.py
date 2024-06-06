@@ -25,18 +25,25 @@ def is_time_slot_available(date, time):
         return False
     return True
 
-# Fetch and format appointments from Firestore
-def fetch_appointments():
+# Fetch appointments from Firestore
+def fetch_appointments(user_id=None):
     appointments_ref = db.collection('appointments')
-    appointments = appointments_ref.stream()
+    if user_id:
+        appointments = appointments_ref.where('user_id', '==', user_id).stream()
+    else:
+        appointments = appointments_ref.stream()
     
     appointment_list = []
     for appointment in appointments:
         appointment_data = appointment.to_dict()
+        appointment_data['id'] = appointment.id
         appointment_list.append(appointment_data)
     
     return appointment_list
 
-
-
+# Delete an appointment from Firestore
+def delete_appointment(appointment_id):
+    appointments_ref = db.collection('appointments')
+    appointment_ref = appointments_ref.document(appointment_id)
+    appointment_ref.delete()
 

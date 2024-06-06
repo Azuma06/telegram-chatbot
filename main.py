@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
 import calendar
 import datetime
-from firebase_config import add_appointment, is_time_slot_available, fetch_appointments
+from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment
 
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
 BOT_USERNAME: Final = '@secrrr_bot'
@@ -36,7 +36,10 @@ async def agendar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Escolha um dos serviços abaixo:', reply_markup=reply_markup)
     return CHOOSING_SERVICE
 
-# Handle button callbacks
+async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text('Operação cancelada.')
+    return ConversationHandler.END
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()  # to show "processing..." to the user
@@ -125,7 +128,6 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(text=response)
     return ConversationHandler.END
 
-# New command handler to view appointments
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     OWNER_USER_ID = 123456789  # Replace with the actual user ID of the business owner
@@ -145,6 +147,31 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text(response)
     else:
         await update.message.reply_text("You do not have permission to view the appointments.")
+
+async def cancel_appointment_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    # Fetch user's appointments
+    appointments = fetch_appointments(user_id=user_id)
+    if not appointments:
+        await update.message.reply_text("You have no appointments to cancel.")
+        return
+
+    # Display user's appointments with options to cancel
+    keyboard = [
+        [InlineKeyboardButton(f"{appointment['service']} on {appointment['date']} at {appointment['time']}", callback_data=f"cancel_{appointment['id']}")]
+        for appointment in appointments
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text('Select an appointment to cancel:', reply_markup=reply_markup)
+
+async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    appointment_id = query.data[7:]  # remove the "cancel_" prefix
+    delete_appointment(appointment_id)
+    await query.edit_message_text(text="Your appointment has been canceled.")
 
 # responses
 def handle_response(text: str) -> str:
@@ -188,7 +215,7 @@ if __name__ == "__main__":
             CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
             CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)]
         },
-        fallbacks=[CommandHandler('cancel', start_command)]  # You might want to create a cancel function
+        fallbacks=[CommandHandler('cancel', cancel_command)]  # Add cancel command as fallback
     )
 
     app.add_handler(conv_handler)
@@ -196,6 +223,8 @@ if __name__ == "__main__":
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
+    app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
+    app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)
 
