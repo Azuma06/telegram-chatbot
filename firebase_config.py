@@ -5,8 +5,6 @@ from firebase_admin import credentials, firestore
 cred = credentials.Certificate('/workspaces/telegram-chatbot/sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
 firebase_admin.initialize_app(cred)
 
-
-
 db = firestore.client()
 
 # Add an appointment to Firestore
@@ -26,3 +24,19 @@ def is_time_slot_available(date, time):
     for appointment in query:
         return False
     return True
+
+# Fetch and format appointments from Firestore
+def fetch_appointments():
+    appointments_ref = db.collection('appointments')
+    appointments = appointments_ref.stream()
+    
+    appointment_list = []
+    for appointment in appointments:
+        appointment_data = appointment.to_dict()
+        appointment_list.append(appointment_data)
+    
+    return appointment_list
+
+
+
+
