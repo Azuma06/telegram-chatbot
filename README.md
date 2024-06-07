@@ -17,7 +17,7 @@
 
 - [x] save usename, not only user ID
 
-- [ ] add exceptions (non working hours, holidays, non working days...)
+- [x] add exceptions (non working hours, holidays, non working days...)
 
 # Telegram Appointment Bot
 
