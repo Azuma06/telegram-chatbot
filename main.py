@@ -20,6 +20,43 @@ SERVICES = {
 # Define conversation states
 CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME = range(3)
 
+#only 2024, hardcoded
+#really not optimal, but im just a girl :P
+# Define holidays
+HOLIDAYS = [ 
+    datetime.date(2024, 1, 1),   # New Year's Day
+    datetime.date(2024, 2, 12),  # Carnival
+    datetime.date(2024, 3, 29),  # Good Friday
+    datetime.date(2024, 3, 31),  # Easter Sunday
+    datetime.date(2024, 4, 21),  # Tiradentes' Day
+    datetime.date(2024, 5, 1),   # Labour Day
+    datetime.date(2024, 5, 30),  # Corpus Christi
+    datetime.date(2024, 9, 7),   # Independence Day
+    datetime.date(2024, 10, 12), # Our Lady of Aparecida
+    datetime.date(2024, 11, 2),  # All Souls' Day
+    datetime.date(2024, 11, 15), # Proclamation of the Republic
+    datetime.date(2024, 12, 25), # Christmas
+    
+    #sundays
+    datetime.date(2024, 1, 7), datetime.date(2024, 1, 14), datetime.date(2024, 1, 21), datetime.date(2024, 1, 28),
+    datetime.date(2024, 2, 4), datetime.date(2024, 2, 11), datetime.date(2024, 2, 18), datetime.date(2024, 2, 25),
+    datetime.date(2024, 3, 3), datetime.date(2024, 3, 10), datetime.date(2024, 3, 17), datetime.date(2024, 3, 24), datetime.date(2024, 3, 31),
+    datetime.date(2024, 4, 7), datetime.date(2024, 4, 14), datetime.date(2024, 4, 21), datetime.date(2024, 4, 28),
+    datetime.date(2024, 5, 5), datetime.date(2024, 5, 12), datetime.date(2024, 5, 19), datetime.date(2024, 5, 26),
+    datetime.date(2024, 6, 2), datetime.date(2024, 6, 9), datetime.date(2024, 6, 16), datetime.date(2024, 6, 23), datetime.date(2024, 6, 30),
+    datetime.date(2024, 7, 7), datetime.date(2024, 7, 14), datetime.date(2024, 7, 21), datetime.date(2024, 7, 28),
+    datetime.date(2024, 8, 4), datetime.date(2024, 8, 11), datetime.date(2024, 8, 18), datetime.date(2024, 8, 25),
+    datetime.date(2024, 9, 1), datetime.date(2024, 9, 8), datetime.date(2024, 9, 15), datetime.date(2024, 9, 22), datetime.date(2024, 9, 29),
+    datetime.date(2024, 10, 6), datetime.date(2024, 10, 13), datetime.date(2024, 10, 20), datetime.date(2024, 10, 27),
+    datetime.date(2024, 11, 3), datetime.date(2024, 11, 10), datetime.date(2024, 11, 17), datetime.date(2024, 11, 24),
+    datetime.date(2024, 12, 1), datetime.date(2024, 12, 8), datetime.date(2024, 12, 15), datetime.date(2024, 12, 22), datetime.date(2024, 12, 29),
+
+]
+
+# Function to check if a date is a holiday
+def is_holiday(date):
+    return date in HOLIDAYS
+
 # commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Olá, seja bem vinda ao chat bot do S. Beleza!')
@@ -134,11 +171,21 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_calendar(update, context)
     elif data.startswith("day_"):
         day = int(data[4:])
-        context.user_data['date'] = datetime.date(year, month, day)
+        selected_date = datetime.date(year, month, day)
+        if is_holiday(selected_date):
+            await query.edit_message_text(text="Desculpe, não podemos agendar neste dia porque é um feriado. Por favor, escolha outra data.")
+            return CHOOSING_DATE
+        context.user_data['date'] = selected_date
         await show_time_slots(update.effective_chat.id, context)
         return CHOOSING_TIME
 
 async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    date = context.user_data['date']
+    if is_holiday(date):
+        await context.bot.send_message(chat_id=chat_id, text="Desculpe, não podemos agendar neste dia porque é um feriado. Por favor, escolha outra data.")
+        await send_calendar(chat_id, context)  # Show the calendar again
+        return
+
     time_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
     keyboard = [[InlineKeyboardButton(slot, callback_data=f"time_{slot}") for slot in time_slots[i:i+3]] for i in range(0, len(time_slots), 3)]
     reply_markup = InlineKeyboardMarkup(keyboard)
