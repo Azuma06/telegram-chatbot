@@ -17,6 +17,8 @@
 
 - [x] add exceptions (non working hours, holidays, non working days...)
 
+- [ ] work hours
+
 # Telegram Appointment Bot
 
 This is a Telegram bot for scheduling appointments using Firebase as the backend database.
