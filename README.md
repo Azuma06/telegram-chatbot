@@ -7,8 +7,6 @@
 
 - [ ] reports mensair (pdf?)
 
-- [ ] gerenciar feriados
-
 - [x] checar os horarios que marcou (user)
 
 - [x] cancelar operaçao
