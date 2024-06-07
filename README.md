@@ -17,6 +17,8 @@
 
 - [x] save usename, not only user ID
 
+- [ ] add exceptions (non working hours, holidays, non working days...)
+
 # Telegram Appointment Bot
 
 This is a Telegram bot for scheduling appointments using Firebase as the backend database.
