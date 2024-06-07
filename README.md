@@ -1,5 +1,3 @@
-# telegram-chatbot
-projeto SABAO
 
 # TODO list
 
