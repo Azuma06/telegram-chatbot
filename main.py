@@ -20,7 +20,7 @@ SERVICES = {
 }
 
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY = range(4)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY, DELETING_HOLIDAY = range(5)
 
 #really not optimal, but im just a girl :P
 # Define holidays
@@ -52,6 +52,51 @@ async def add_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ADDING_HOLIDAY
     else:
         await update.message.reply_text("Desculpe, você não tem permissão para adicionar feriados.")
+        return ConversationHandler.END
+    
+def delete_holiday(date_str: str) -> bool:
+    try:
+        holiday_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        if holiday_date in HOLIDAYS:
+            with open('holidays.txt', 'r') as file:
+                lines = file.readlines()
+            with open('holidays.txt', 'w') as file:
+                for line in lines:
+                    if line.strip() != date_str:
+                        file.write(line)
+            HOLIDAYS.remove(holiday_date)
+            return True
+        else:
+            return False
+    except ValueError:
+        return False
+    
+# Command to start deleting a holiday
+async def delete_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_USER_ID:
+        await update.message.reply_text("Por favor, insira a data do feriado que deseja excluir no formato AAAA-MM-DD:")
+        return DELETING_HOLIDAY
+    else:
+        await update.message.reply_text("Desculpe, você não tem permissão para excluir feriados.")
+        return ConversationHandler.END
+
+
+# Function to handle the holiday deletion
+async def handle_holiday_deletion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_USER_ID:
+        date_str = update.message.text
+        if delete_holiday(date_str):
+            await update.message.reply_text(f"Feriado excluído com sucesso: {date_str}")
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("O feriado não existe ou já foi excluído.")
+            return DELETING_HOLIDAY
+    else:
+        await update.message.reply_text("Desculpe, você não tem permissão para excluir feriados.")
         return ConversationHandler.END
 
 # Function to handle the holiday date input
@@ -348,8 +393,18 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler('cancel', cancel_command)]
     )
 
+    # Set up conversation handler for deleting holidays
+    delete_holiday_handler = ConversationHandler(
+        entry_points=[CommandHandler('delete_holiday', delete_holiday_command)],
+        states={
+            DELETING_HOLIDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_holiday_deletion)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_command)]
+    )
+
     app.add_handler(conv_handler)
     app.add_handler(holiday_handler)
+    app.add_handler(delete_holiday_handler)
 
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
