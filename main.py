@@ -8,6 +8,8 @@ from firebase_config import add_appointment, is_time_slot_available, fetch_appoi
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
 BOT_USERNAME: Final = '@secrrr_bot'
 
+OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
+
 # Define services and their prices
 SERVICES = {
     '1': ('Corte', 50),
@@ -18,40 +20,59 @@ SERVICES = {
 }
 
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME = range(3)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY = range(4)
 
-#only 2024, hardcoded
 #really not optimal, but im just a girl :P
 # Define holidays
-HOLIDAYS = [ 
-    datetime.date(2024, 1, 1),   # New Year's Day
-    datetime.date(2024, 2, 12),  # Carnival
-    datetime.date(2024, 3, 29),  # Good Friday
-    datetime.date(2024, 3, 31),  # Easter Sunday
-    datetime.date(2024, 4, 21),  # Tiradentes' Day
-    datetime.date(2024, 5, 1),   # Labour Day
-    datetime.date(2024, 5, 30),  # Corpus Christi
-    datetime.date(2024, 9, 7),   # Independence Day
-    datetime.date(2024, 10, 12), # Our Lady of Aparecida
-    datetime.date(2024, 11, 2),  # All Souls' Day
-    datetime.date(2024, 11, 15), # Proclamation of the Republic
-    datetime.date(2024, 12, 25), # Christmas
-    
-    #sundays
-    datetime.date(2024, 1, 7), datetime.date(2024, 1, 14), datetime.date(2024, 1, 21), datetime.date(2024, 1, 28),
-    datetime.date(2024, 2, 4), datetime.date(2024, 2, 11), datetime.date(2024, 2, 18), datetime.date(2024, 2, 25),
-    datetime.date(2024, 3, 3), datetime.date(2024, 3, 10), datetime.date(2024, 3, 17), datetime.date(2024, 3, 24), datetime.date(2024, 3, 31),
-    datetime.date(2024, 4, 7), datetime.date(2024, 4, 14), datetime.date(2024, 4, 21), datetime.date(2024, 4, 28),
-    datetime.date(2024, 5, 5), datetime.date(2024, 5, 12), datetime.date(2024, 5, 19), datetime.date(2024, 5, 26),
-    datetime.date(2024, 6, 2), datetime.date(2024, 6, 9), datetime.date(2024, 6, 16), datetime.date(2024, 6, 23), datetime.date(2024, 6, 30),
-    datetime.date(2024, 7, 7), datetime.date(2024, 7, 14), datetime.date(2024, 7, 21), datetime.date(2024, 7, 28),
-    datetime.date(2024, 8, 4), datetime.date(2024, 8, 11), datetime.date(2024, 8, 18), datetime.date(2024, 8, 25),
-    datetime.date(2024, 9, 1), datetime.date(2024, 9, 8), datetime.date(2024, 9, 15), datetime.date(2024, 9, 22), datetime.date(2024, 9, 29),
-    datetime.date(2024, 10, 6), datetime.date(2024, 10, 13), datetime.date(2024, 10, 20), datetime.date(2024, 10, 27),
-    datetime.date(2024, 11, 3), datetime.date(2024, 11, 10), datetime.date(2024, 11, 17), datetime.date(2024, 11, 24),
-    datetime.date(2024, 12, 1), datetime.date(2024, 12, 8), datetime.date(2024, 12, 15), datetime.date(2024, 12, 22), datetime.date(2024, 12, 29),
+def load_holidays(file_path: str):
+    holidays = []
+    with open(file_path, 'r') as file:
+        for line in file:
+            date_str = line.strip()
+            if date_str:
+                date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+                holidays.append(date)
+    return holidays
 
-]
+def add_holiday(date_str: str) -> bool:
+    try:
+        datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
+        with open('holidays.txt', 'a') as file:
+            file.write(f"{date_str}\n")
+        return True
+    except ValueError:
+        return False
+
+# Command to start adding a holiday
+async def add_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_USER_ID:
+        await update.message.reply_text("Por favor, insira a data do feriado no formato AAAA-MM-DD:")
+        return ADDING_HOLIDAY
+    else:
+        await update.message.reply_text("Desculpe, você não tem permissão para adicionar feriados.")
+        return ConversationHandler.END
+
+# Function to handle the holiday date input
+async def handle_holiday_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id == OWNER_USER_ID:
+        date_str = update.message.text
+        if add_holiday(date_str):
+            HOLIDAYS.append(datetime.datetime.strptime(date_str, '%Y-%m-%d').date())
+            await update.message.reply_text(f"Feriado adicionado com sucesso: {date_str}")
+            return ConversationHandler.END
+        else:
+            await update.message.reply_text("Formato de data inválido. Por favor, use AAAA-MM-DD.")
+            return ADDING_HOLIDAY
+    else:
+        await update.message.reply_text("Desculpe, você não tem permissão para adicionar feriados.")
+        return ConversationHandler.END
+
+# Load holidays from the file
+HOLIDAYS = load_holidays('holidays.txt')
 
 # Function to check if a date is a holiday
 def is_holiday(date):
@@ -173,7 +194,7 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         day = int(data[4:])
         selected_date = datetime.date(year, month, day)
         if is_holiday(selected_date):
-            await query.edit_message_text(text="Desculpe, não podemos agendar neste dia porque é um feriado. Por favor, escolha outra data.")
+            await query.edit_message_text(text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
             return CHOOSING_DATE
         context.user_data['date'] = selected_date
         await show_time_slots(update.effective_chat.id, context)
@@ -182,7 +203,7 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
     date = context.user_data['date']
     if is_holiday(date):
-        await context.bot.send_message(chat_id=chat_id, text="Desculpe, não podemos agendar neste dia porque é um feriado. Por favor, escolha outra data.")
+        await context.bot.send_message(chat_id=chat_id, text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
         await send_calendar(chat_id, context)  # Show the calendar again
         return
 
@@ -218,7 +239,7 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
+
 
     if user_id == OWNER_USER_ID:
         appointments = fetch_appointments()
@@ -318,7 +339,17 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler('cancel', cancel_command)]  # Add cancel command as fallback
     )
 
+    # Set up conversation handler for adding holidays
+    holiday_handler = ConversationHandler(
+        entry_points=[CommandHandler('add_holiday', add_holiday_command)],
+        states={
+            ADDING_HOLIDAY: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_holiday_date)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel_command)]
+    )
+
     app.add_handler(conv_handler)
+    app.add_handler(holiday_handler)
 
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
@@ -326,9 +357,10 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler('view_appointments', view_appointments_command)) 
     app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
     app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
+    
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)
 
     # polls the bot
     print('Pensando...')
-    app.run_polling(poll_interval=3)
+    app.run_polling(poll_interval=0.1)
