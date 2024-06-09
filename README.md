@@ -19,6 +19,8 @@
 
 - [ ] work hours
 
+- [ ] alert about upcoming appointments
+
 # Telegram Appointment Bot
 
 This is a Telegram bot for scheduling appointments using Firebase as the backend database.
