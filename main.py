@@ -1,6 +1,7 @@
 from typing import Final
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, ConversationHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, \
+    ConversationHandler
 import calendar
 import datetime
 from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment
@@ -22,7 +23,8 @@ SERVICES = {
 # Define conversation states
 CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY, DELETING_HOLIDAY = range(5)
 
-#really not optimal, but im just a girl :P
+
+# really not optimal, but im just a girl :P
 # Define holidays
 def load_holidays(file_path: str):
     holidays = []
@@ -34,6 +36,7 @@ def load_holidays(file_path: str):
                 holidays.append(date)
     return holidays
 
+
 def add_holiday(date_str: str) -> bool:
     try:
         datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -42,6 +45,7 @@ def add_holiday(date_str: str) -> bool:
         return True
     except ValueError:
         return False
+
 
 # Command to start adding a holiday
 async def add_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,7 +57,8 @@ async def add_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         await update.message.reply_text("Desculpe, você não tem permissão para adicionar feriados.")
         return ConversationHandler.END
-    
+
+
 def delete_holiday(date_str: str) -> bool:
     try:
         holiday_date = datetime.datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -70,7 +75,8 @@ def delete_holiday(date_str: str) -> bool:
             return False
     except ValueError:
         return False
-    
+
+
 # Command to start deleting a holiday
 async def delete_holiday_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -99,6 +105,7 @@ async def handle_holiday_deletion(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("Desculpe, você não tem permissão para excluir feriados.")
         return ConversationHandler.END
 
+
 # Function to handle the holiday date input
 async def handle_holiday_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -116,19 +123,24 @@ async def handle_holiday_date(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("Desculpe, você não tem permissão para adicionar feriados.")
         return ConversationHandler.END
 
+
 # Load holidays from the file
 HOLIDAYS = load_holidays('holidays.txt')
+
 
 # Function to check if a date is a holiday
 def is_holiday(date):
     return date in HOLIDAYS
 
+
 # commands
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Olá, seja bem vinda ao chat bot do S. Beleza!')
 
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Eu sou um robô, digite algo que vou lhe ajudar!')
+
 
 async def agendar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -139,9 +151,11 @@ async def agendar_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Escolha um dos serviços abaixo:', reply_markup=reply_markup)
     return CHOOSING_SERVICE
 
+
 async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text('Operação cancelada.')
     return ConversationHandler.END
+
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -158,9 +172,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text="Desculpe, essa opção não é válida.")
         return ConversationHandler.END
 
+
 async def send_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.datetime.now()
-    
+
     # Set default month and year if not in user data
     year = context.user_data.get('year', now.year)
     month = context.user_data.get('month', now.month)
@@ -175,16 +190,16 @@ async def send_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Create navigation buttons
     keyboard = [
-        [InlineKeyboardButton("◀️", callback_data="prev_month"), 
+        [InlineKeyboardButton("◀️", callback_data="prev_month"),
          InlineKeyboardButton(f"{calendar.month_name[month]} {year}", callback_data="ignore"),
          InlineKeyboardButton("▶️", callback_data="next_month")]
     ]
-    
+
     # Create day names row
     day_names = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
     day_names_row = [InlineKeyboardButton(day, callback_data="ignore") for day in day_names]
     keyboard.append(day_names_row)
-    
+
     # Create the calendar days buttons
     for week in month_days:
         row = []
@@ -214,7 +229,7 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.datetime.now()
     year = context.user_data.get('year', now.year)
     month = context.user_data.get('month', now.month)
-    
+
     if data == "ignore":
         return
     elif data == "prev_month":
@@ -239,24 +254,29 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         day = int(data[4:])
         selected_date = datetime.date(year, month, day)
         if is_holiday(selected_date):
-            await query.edit_message_text(text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
+            await query.edit_message_text(
+                text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
             return CHOOSING_DATE
         context.user_data['date'] = selected_date
         await show_time_slots(update.effective_chat.id, context)
         return CHOOSING_TIME
 
+
 async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
     date = context.user_data['date']
     if is_holiday(date):
-        await context.bot.send_message(chat_id=chat_id, text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")
         await send_calendar(chat_id, context)  # Show the calendar again
         return
 
     time_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
-    keyboard = [[InlineKeyboardButton(slot, callback_data=f"time_{slot}") for slot in time_slots[i:i+3]] for i in range(0, len(time_slots), 3)]
+    keyboard = [[InlineKeyboardButton(slot, callback_data=f"time_{slot}") for slot in time_slots[i:i + 3]] for i in
+                range(0, len(time_slots), 3)]
     reply_markup = InlineKeyboardMarkup(keyboard)
     message = "Escolha um horário disponível:"
     await context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
+
 
 async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -282,22 +302,23 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     await query.edit_message_text(text=response)
     return ConversationHandler.END
 
+
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
 
     if user_id == OWNER_USER_ID:
         appointments = fetch_appointments()
         if appointments:
             response = "Here are the upcoming appointments:\n\n"
             for appointment in appointments:
-                response += (f"User: {appointment['first_name']} {appointment['last_name']} ({appointment['user_id']})\n"
-                             f"Service: {appointment['service']}\n"
-                             f"Date: {appointment['date']}\n"
-                             f"Time: {appointment['time']}\n\n")
+                response += (
+                    f"User: {appointment['first_name']} {appointment['last_name']} ({appointment['user_id']})\n"
+                    f"Service: {appointment['service']}\n"
+                    f"Date: {appointment['date']}\n"
+                    f"Time: {appointment['time']}\n\n")
         else:
             response = "No appointments found."
-        
+
         await update.message.reply_text(response)
     else:
         # Fetch only user's appointments
@@ -310,7 +331,7 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
                              f"Time: {appointment['time']}\n\n")
         else:
             response = "You have no appointments."
-        
+
         await update.message.reply_text(response)
 
 
@@ -325,11 +346,13 @@ async def cancel_appointment_command(update: Update, context: ContextTypes.DEFAU
 
     # Display user's appointments with options to cancel
     keyboard = [
-        [InlineKeyboardButton(f"{appointment['service']} on {appointment['date']} at {appointment['time']}", callback_data=f"cancel_{appointment['id']}")]
+        [InlineKeyboardButton(f"{appointment['service']} on {appointment['date']} at {appointment['time']}",
+                              callback_data=f"cancel_{appointment['id']}")]
         for appointment in appointments
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text('Select an appointment to cancel:', reply_markup=reply_markup)
+
 
 async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -338,6 +361,7 @@ async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
     appointment_id = query.data[7:]  # remove the "cancel_" prefix
     delete_appointment(appointment_id)
     await query.edit_message_text(text="Your appointment has been canceled.")
+
 
 # responses
 def handle_response(text: str) -> str:
@@ -350,6 +374,7 @@ def handle_response(text: str) -> str:
         return 'eu estou bem!'
 
     return 'Eu nao entendi o que voce digitou...'
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text: str = update.message.text
@@ -366,8 +391,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print('Bot:', response)
     await update.message.reply_text(response)
 
+
 async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
     print(f'Update {update} caused error {context.error}')
+
 
 if __name__ == "__main__":
     print('Starting bot...')
@@ -409,10 +436,12 @@ if __name__ == "__main__":
     # Other handlers
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
-    app.add_handler(CommandHandler('view_appointments', view_appointments_command)) 
-    app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
-    app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
-    
+    app.add_handler(CommandHandler('view_appointments', view_appointments_command))
+    app.add_handler(
+        CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
+    app.add_handler(CallbackQueryHandler(handle_cancel_appointment,
+                                         pattern='^cancel_'))  # Add handler for cancel appointment button
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)
 
