@@ -2,10 +2,13 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Initialize Firebase
-cred = credentials.Certificate('/workspaces/telegram-chatbot/sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
+cred = credentials.Certificate('C:\\Users\\arthu\Documents\code-projects\\telegram-chatbot\\sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+#hello :)
+
 
 # Add an appointment to Firestore
 def add_appointment(user_id, first_name, last_name, service, date, time):
@@ -34,13 +37,13 @@ def fetch_appointments(user_id=None):
         appointments = appointments_ref.where('user_id', '==', user_id).stream()
     else:
         appointments = appointments_ref.stream()
-    
+
     appointment_list = []
     for appointment in appointments:
         appointment_data = appointment.to_dict()
         appointment_data['id'] = appointment.id
         appointment_list.append(appointment_data)
-    
+
     return appointment_list
 
 # Delete an appointment from Firestore
