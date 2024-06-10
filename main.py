@@ -4,6 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
     ConversationHandler
 import calendar
 import datetime
+from datetime import timedelta
 from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment
 
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
@@ -427,9 +428,10 @@ if __name__ == "__main__":
     # Set up the job to send appointment reminders
     job_queue = app.job_queue
     print('Setting up the job queue...')
-    job_queue.run_daily(
+    job_queue.run_repeating(
         send_appointment_reminders,
-        time=datetime.time(hour=9, minute=00)  # Set the initial time to run the job (e.g., 9:00 AM)
+        timedelta(seconds=86400),  # Run the task every 10 seconds
+
     )
     print('Job queue set up completed.')
 
