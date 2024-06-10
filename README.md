@@ -19,7 +19,7 @@
 
 - [ ] work hours
 
-- [ ] alert about upcoming appointments
+- [x] alert about upcoming appointments
 
 - [ ] alert admin that an appointment was created by someone 
 
