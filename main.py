@@ -24,6 +24,30 @@ SERVICES = {
 CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY, DELETING_HOLIDAY = range(5)
 
 
+# Appointment reminder function with debug logs
+async def send_appointment_reminders(context: ContextTypes.DEFAULT_TYPE):
+    tomorrow = datetime.date.today() + datetime.timedelta(days=1)
+    tomorrow_str = tomorrow.strftime("%Y-%m-%d")
+
+    print(f"Running send_appointment_reminders for {tomorrow_str}")  # Debug log
+
+    appointments = fetch_appointments()
+    for appointment in appointments:
+        print(f"Checking appointment: {appointment}")  # Debug log
+        if appointment['date'] == tomorrow_str:
+            user_id = appointment['user_id']
+            service = appointment['service']
+            date = appointment['date']
+            time = appointment['time']
+
+            reminder_text = (
+                f"Lembrete: Você tem um agendamento para {service} "
+                f"amanhã, dia {date}, às {time}."
+            )
+            print(f"Sending reminder to {user_id}: {reminder_text}")  # Debug log
+            await context.bot.send_message(chat_id=user_id, text=reminder_text)
+
+
 # really not optimal, but im just a girl :P
 # Define holidays
 def load_holidays(file_path: str):
@@ -270,7 +294,7 @@ async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
         await send_calendar(chat_id, context)  # Show the calendar again
         return
 
-    time_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+    time_slots = ["09:00", "10:00", "11:00", "14:00", "15:00", "23:00"]
     keyboard = [[InlineKeyboardButton(slot, callback_data=f"time_{slot}") for slot in time_slots[i:i + 3]] for i in
                 range(0, len(time_slots), 3)]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -399,6 +423,15 @@ async def error(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     print('Starting bot...')
     app = Application.builder().token(TOKEN).build()
+
+    # Set up the job to send appointment reminders
+    job_queue = app.job_queue
+    print('Setting up the job queue...')
+    job_queue.run_daily(
+        send_appointment_reminders,
+        time=datetime.time(hour=9, minute=00)  # Set the initial time to run the job (e.g., 9:00 AM)
+    )
+    print('Job queue set up completed.')
 
     # Set up conversation handler for appointment scheduling
     conv_handler = ConversationHandler(
