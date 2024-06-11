@@ -352,6 +352,18 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     # Check if the time slot is available
     if is_time_slot_available(date, time_slot, employee):
         add_appointment(user_id, first_name, last_name, service, employee, date, time_slot)
+
+        # Send notification to the owner
+        owner_notification = (
+            f"New appointment created:\n"
+            f"User: {first_name} {last_name} ({user_id})\n"
+            f"Service: {service}\n"
+            f"Employee: {employee}\n"
+            f"Date: {date}\n"
+            f"Time: {time_slot}"
+        )
+        await context.bot.send_message(chat_id=OWNER_USER_ID, text=owner_notification)
+
         response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você!"
     else:
         response = f"Desculpe, o horário {time_slot} no dia {date} com {employee} já está ocupado. Por favor, escolha outro horário."
@@ -462,7 +474,7 @@ if __name__ == "__main__":
     print('Setting up the job queue...')
     job_queue.run_repeating(
         send_appointment_reminders,
-        timedelta(seconds=10),  # Run the task every 10 seconds
+        timedelta(seconds=86400),  # Run the task every 10 seconds
 
     )
     print('Job queue set up completed.')

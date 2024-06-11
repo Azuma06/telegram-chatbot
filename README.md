@@ -21,7 +21,7 @@
 
 - [x] alert about upcoming appointments
 
-- [ ] alert admin that an appointment was created by someone 
+- [x] alert admin that an appointment was created by someone 
 
 # Telegram Appointment Bot
 
