@@ -1,7 +1,7 @@
 
 # TODO list
 
-- [ ] selecionar funcionario
+- [x] selecionar funcionario
 
 - [ ] conectar com google calendar
 

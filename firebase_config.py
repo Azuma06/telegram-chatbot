@@ -13,22 +13,23 @@ db = firestore.client()
 
 
 # Add an appointment to Firestore
-def add_appointment(user_id, first_name, last_name, service, date, time):
+def add_appointment(user_id, first_name, last_name, service, employee, date, time):
     appointments_ref = db.collection('appointments')
     appointments_ref.add({
         'user_id': user_id,
         'first_name': first_name,
         'last_name': last_name,
         'service': service,
+        'employee': employee,
         'date': date,
         'time': time
     })
 
 
 # Check if a time slot is available
-def is_time_slot_available(date, time):
+def is_time_slot_available(date, time, employee):
     appointments_ref = db.collection('appointments')
-    query = appointments_ref.where('date', '==', date).where('time', '==', time).stream()
+    query = appointments_ref.where('date', '==', date).where('time', '==', time).where('employee', '==', employee).stream()
     for appointment in query:
         return False
     return True

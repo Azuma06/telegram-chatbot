@@ -21,8 +21,16 @@ SERVICES = {
     '5': ('Tintura', 70)
 }
 
+# Define employees
+EMPLOYEES = {
+    '1': 'Ana',
+    '2': 'Beatriz',
+    '3': 'Carlos',
+    '4': 'Diana'
+}
+
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, ADDING_HOLIDAY, DELETING_HOLIDAY = range(5)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY = range(6)
 
 
 # Appointment reminder function with debug logs
@@ -37,13 +45,14 @@ async def send_appointment_reminders(context: ContextTypes.DEFAULT_TYPE):
         print(f"Checking appointment: {appointment}")  # Debug log
         if appointment['date'] == tomorrow_str:
             user_id = appointment['user_id']
+            employee = appointment['employee']
             service = appointment['service']
             date = appointment['date']
             time = appointment['time']
 
             reminder_text = (
                 f"Lembrete: Você tem um agendamento para {service} "
-                f"amanhã, dia {date}, às {time}."
+                f"amanhã, dia {date}, às {time} com a {employee}."
             )
             print(f"Sending reminder to {user_id}: {reminder_text}")  # Debug log
             await context.bot.send_message(chat_id=user_id, text=reminder_text)
@@ -191,7 +200,29 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         service_name, service_price = SERVICES[service_key]
         context.user_data['service'] = service_name
         context.user_data['price'] = service_price
-        await send_calendar(update, context)
+
+        # Proceed to choosing employee
+        keyboard = [
+            [InlineKeyboardButton(name, callback_data=key)]
+            for key, name in EMPLOYEES.items()
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(text="Escolha um funcionário:", reply_markup=reply_markup)
+        return CHOOSING_EMPLOYEE
+    else:
+        await query.edit_message_text(text="Desculpe, essa opção não é válida.")
+        return ConversationHandler.END
+
+
+async def employee_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()  # to show "processing..." to the user
+
+    employee_key = query.data
+    if employee_key in EMPLOYEES:
+        employee_name = EMPLOYEES[employee_key]
+        context.user_data['employee'] = employee_name
+        await send_calendar(update, context)  # Proceed to date selection
         return CHOOSING_DATE
     else:
         await query.edit_message_text(text="Desculpe, essa opção não é válida.")
@@ -313,16 +344,17 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     service = context.user_data['service']
     price = context.user_data['price']
     date = context.user_data['date'].strftime("%Y-%m-%d")
+    employee = context.user_data['employee']
     user_id = update.effective_user.id
     first_name = update.effective_user.first_name
     last_name = update.effective_user.last_name
 
     # Check if the time slot is available
-    if is_time_slot_available(date, time_slot):
-        add_appointment(user_id, first_name, last_name, service, date, time_slot)
-        response = f"Ótimo! Você agendou {service} por R${price} no dia {date} às {time_slot}. Esperamos você!"
+    if is_time_slot_available(date, time_slot, employee):
+        add_appointment(user_id, first_name, last_name, service, employee, date, time_slot)
+        response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você!"
     else:
-        response = f"Desculpe, o horário {time_slot} no dia {date} já está ocupado. Por favor, escolha outro horário."
+        response = f"Desculpe, o horário {time_slot} no dia {date} com {employee} já está ocupado. Por favor, escolha outro horário."
 
     await query.edit_message_text(text=response)
     return ConversationHandler.END
@@ -430,7 +462,7 @@ if __name__ == "__main__":
     print('Setting up the job queue...')
     job_queue.run_repeating(
         send_appointment_reminders,
-        timedelta(seconds=86400),  # Run the task every 10 seconds
+        timedelta(seconds=10),  # Run the task every 10 seconds
 
     )
     print('Job queue set up completed.')
@@ -440,6 +472,7 @@ if __name__ == "__main__":
         entry_points=[CommandHandler('agendar', agendar_command)],
         states={
             CHOOSING_SERVICE: [CallbackQueryHandler(button_callback)],
+            CHOOSING_EMPLOYEE: [CallbackQueryHandler(employee_callback)],
             CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
             CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)]
         },
