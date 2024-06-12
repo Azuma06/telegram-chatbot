@@ -320,6 +320,14 @@ async def handle_calendar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_time_slots(chat_id, context: ContextTypes.DEFAULT_TYPE):
     date = context.user_data['date']
+    today = datetime.date.today()
+
+    if date == today:
+        await context.bot.send_message(chat_id=chat_id,
+                                       text="Desculpe, não é possível agendar para o dia de hoje. Por favor, escolha outra data.")
+        await send_calendar(chat_id, context)  # Show the calendar again
+        return
+
     if is_holiday(date):
         await context.bot.send_message(chat_id=chat_id,
                                        text="Desculpe, não podemos agendar neste dia, pois não estaremos trabalhando. Por favor, escolha outra data.")

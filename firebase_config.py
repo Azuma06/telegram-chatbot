@@ -3,7 +3,7 @@ from firebase_admin import credentials, firestore
 
 # Initialize Firebase
 cred = credentials.Certificate(
-    'C:\\Users\\arthu\Documents\code-projects\\telegram-chatbot\\sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
+    'C:\\Users\\arthur.karoly\\PycharmProjects\\telegram-chatbot\\sabaodb-firebase-adminsdk-vcyys-bfb0fa9a02.json')
 firebase_admin.initialize_app(cred)
 
 db = firestore.client()
