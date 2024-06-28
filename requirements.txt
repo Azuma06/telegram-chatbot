@@ -1,3 +1,9 @@
 pip install "python-telegram-bot[all]"
 telegram~=0.0.1
 fpdf~=1.7.2
+python-telegram-bot==21.2
+python-dotenv==1.0.1
+firebase-admin==6.5.0
+APScheduler==3.10.4
+requests==2.31.0
+pip install --upgrade google-api-python-client google-auth-httplib2 google-auth-oauthlib

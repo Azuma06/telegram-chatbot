@@ -6,10 +6,23 @@ import calendar
 import datetime
 from datetime import timedelta
 from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment
+import pickle
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+import os.path
 
+# google calendar
+SCOPES = ['https://www.googleapis.com/auth/calendar.events']
+
+# firebase db
 TOKEN: Final = '7445691165:AAF3zQgRCky9mu_b8noFB9Ym6fFSVOYClHc'
+
+# telegram bot @
 BOT_USERNAME: Final = '@secrrr_bot'
 
+# telegram owner id
 OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
 
 # Define services and their prices
@@ -32,6 +45,28 @@ EMPLOYEES = {
 # Define conversation states
 CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY = range(6)
 
+
+def get_calendar_service():
+    creds = None
+    # The file token.json stores the user's access and refresh tokens, and is
+    # created automatically when the authorization flow completes for the first
+    # time.
+    if os.path.exists('token.json'):
+        with open('token.json', 'rb') as token:
+            creds = pickle.load(token)
+    # If there are no (valid) credentials available, let the user log in.
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                'credentials.json', SCOPES)
+            creds = flow.run_local_server(port=0)
+        # Save the credentials for the next run
+        with open('token.json', 'wb') as token:
+            pickle.dump(creds, token)
+    service = build('calendar', 'v3', credentials=creds)
+    return service
 
 # Appointment reminder function with debug logs
 async def send_appointment_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -371,6 +406,31 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
             f"Time: {time_slot}"
         )
         await context.bot.send_message(chat_id=OWNER_USER_ID, text=owner_notification)
+
+        # Save the appointment to Google Calendar
+        start_time = datetime.datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %H:%M")
+        end_time = start_time + datetime.timedelta(hours=1)  # assuming the appointment is 1 hour long
+
+        event = {
+            'summary': f'{service} with {employee}',
+            'location': 'Your location',
+            'description': f'Appointment for {service} with {employee}',
+            'start': {
+                'dateTime': start_time.isoformat(),
+                'timeZone': 'America/Sao_Paulo',  # Adjust this to your timezone
+            },
+            'end': {
+                'dateTime': end_time.isoformat(),
+                'timeZone': 'America/Sao_Paulo',
+            },
+            'attendees': [
+                {'email': 'employee@example.com'},  # Add employee's email
+            ],
+        }
+
+        service = get_calendar_service()
+        event = service.events().insert(calendarId='primary', body=event).execute()
+        print(f'Event created: {event.get("htmlLink")}')
 
         response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você!"
     else:
