@@ -25,6 +25,14 @@ BOT_USERNAME: Final = '@secrrr_bot'
 # telegram owner id
 OWNER_USER_ID = 968615314  # Replace with the actual user ID of the business owner
 
+# Employee emails
+employee_emails = {
+    'ana': 'ana@gmail.com',
+    'beatriz': 'beatriz@gmail.com',
+    'carlos': 'carlos@gmail.com',
+    'diana': 'diana@gmail.com'
+}
+
 # Define services and their prices
 SERVICES = {
     '1': ('Corte', 50),
@@ -43,30 +51,26 @@ EMPLOYEES = {
 }
 
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY = range(6)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY, TIME_SELECTION, EMAIL_INPUT = range(8)
 
 
 def get_calendar_service():
     creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists('token.json'):
         with open('token.json', 'rb') as token:
             creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(
-                'credentials.json', SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
         with open('token.json', 'wb') as token:
             pickle.dump(creds, token)
     service = build('calendar', 'v3', credentials=creds)
     return service
+
+
 
 # Appointment reminder function with debug logs
 async def send_appointment_reminders(context: ContextTypes.DEFAULT_TYPE):
@@ -396,48 +400,61 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
     if is_time_slot_available(date, time_slot, employee):
         add_appointment(user_id, first_name, last_name, service, employee, date, time_slot)
 
-        # Send notification to the owner
-        owner_notification = (
-            f"New appointment created:\n"
-            f"User: {first_name} {last_name} ({user_id})\n"
-            f"Service: {service}\n"
-            f"Employee: {employee}\n"
-            f"Date: {date}\n"
-            f"Time: {time_slot}"
-        )
-        await context.bot.send_message(chat_id=OWNER_USER_ID, text=owner_notification)
+        # Save user details in context for later use
+        context.user_data['user_id'] = user_id
+        context.user_data['first_name'] = first_name
+        context.user_data['last_name'] = last_name
 
-        # Save the appointment to Google Calendar
-        start_time = datetime.datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %H:%M")
-        end_time = start_time + datetime.timedelta(hours=1)  # assuming the appointment is 1 hour long
-
-        event = {
-            'summary': f'{service} with {employee}',
-            'location': 'Your location',
-            'description': f'Appointment for {service} with {employee}',
-            'start': {
-                'dateTime': start_time.isoformat(),
-                'timeZone': 'America/Sao_Paulo',  # Adjust this to your timezone
-            },
-            'end': {
-                'dateTime': end_time.isoformat(),
-                'timeZone': 'America/Sao_Paulo',
-            },
-            'attendees': [
-                {'email': 'employee@example.com'},  # Add employee's email
-            ],
-        }
-
-        service = get_calendar_service()
-        event = service.events().insert(calendarId='primary', body=event).execute()
-        print(f'Event created: {event.get("htmlLink")}')
-
-        response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você!"
+        await query.edit_message_text(text="Please provide your email address for the appointment confirmation:")
+        return EMAIL_INPUT
     else:
         response = f"Desculpe, o horário {time_slot} no dia {date} com {employee} já está ocupado. Por favor, escolha outro horário."
+        await query.edit_message_text(text=response)
+        return ConversationHandler.END
 
-    await query.edit_message_text(text=response)
+async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_email = update.message.text
+    context.user_data['email'] = user_email
+
+    service = context.user_data['service']
+    price = context.user_data['price']
+    date = context.user_data['date'].strftime("%Y-%m-%d")
+    time_slot = context.user_data['time']
+    employee = context.user_data['employee']
+    user_id = context.user_data['user_id']
+    first_name = context.user_data['first_name']
+    last_name = context.user_data['last_name']
+
+    # Save the appointment to Google Calendar
+    start_time = datetime.datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %H:%M")
+    end_time = start_time + datetime.timedelta(hours=1)  # assuming the appointment is 1 hour long
+
+    event = {
+        'summary': f'{service} com {employee}',
+        'location': 'Your location',
+        'description': f'Appointment for {service} com {employee}',
+        'start': {
+            'dateTime': start_time.isoformat(),
+            'timeZone': 'America/Sao_Paulo',  # Adjust this to your timezone
+        },
+        'end': {
+            'dateTime': end_time.isoformat(),
+            'timeZone': 'America/Sao_Paulo',
+        },
+        'attendees': [
+            {'email': employee_emails.get(employee.lower())},
+            {'email': user_email},
+        ],
+    }
+
+    calendar_service = get_calendar_service()
+    event = calendar_service.events().insert(calendarId='primary', body=event).execute()
+    print(f'Event created: {event.get("htmlLink")}')
+
+    response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {user_email}."
+    await update.message.reply_text(text=response)
     return ConversationHandler.END
+
 
 
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -542,8 +559,7 @@ if __name__ == "__main__":
     print('Setting up the job queue...')
     job_queue.run_repeating(
         send_appointment_reminders,
-        timedelta(seconds=86400),  # Run the task every 10 seconds
-
+        interval=timedelta(seconds=86400),  # Run the task every 24 hours
     )
     print('Job queue set up completed.')
 
@@ -554,7 +570,8 @@ if __name__ == "__main__":
             CHOOSING_SERVICE: [CallbackQueryHandler(button_callback)],
             CHOOSING_EMPLOYEE: [CallbackQueryHandler(employee_callback)],
             CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
-            CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)]
+            CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)],
+            EMAIL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input)],
         },
         fallbacks=[CommandHandler('cancel', cancel_command)]  # Add cancel command as fallback
     )
@@ -585,14 +602,11 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler('start', start_command))
     app.add_handler(CommandHandler('help', help_command))
     app.add_handler(CommandHandler('view_appointments', view_appointments_command))
-    app.add_handler(
-        CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
-    app.add_handler(CallbackQueryHandler(handle_cancel_appointment,
-                                         pattern='^cancel_'))  # Add handler for cancel appointment button
+    app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
+    app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)
 
-    # polls the bot
     print('Pensando...')
     app.run_polling(poll_interval=0.1)
