@@ -5,13 +5,17 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import calendar
 import datetime
 from datetime import timedelta
-from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment
+from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment, credentials, firebase_admin, firestore
 import pickle
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 import os.path
+from report_generator import generate_last_month_report
+
+
+db = firestore.client()
 
 # google calendar
 SCOPES = ['https://www.googleapis.com/auth/calendar.events']
@@ -51,7 +55,29 @@ EMPLOYEES = {
 }
 
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY, TIME_SELECTION, EMAIL_INPUT = range(8)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY, TIME_SELECTION, EMAIL_INPUT, EMAIL_CHOICE, EMAIL_INPUT = range(10)
+
+
+async def generate_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check if the user has permission to generate reports
+    if update.effective_user.id != OWNER_USER_ID:
+        await update.message.reply_text("Sorry, you don't have permission to generate reports.")
+        return
+
+    await update.message.reply_text("Generating this month's report. Please wait...")
+
+    try:
+        # Generate the report
+        report_file = generate_last_month_report()
+
+        # Send the report
+        with open(report_file, 'rb') as file:
+            await update.message.reply_document(document=file, filename=report_file)
+
+        await update.message.reply_text("Report for the current month generated and sent successfully!")
+    except Exception as e:
+        await update.message.reply_text(f"An error occurred while generating the report: {str(e)}")
+        print(f"Error in generate_report_command: {str(e)}")
 
 
 def get_calendar_service():
@@ -398,32 +424,70 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Check if the time slot is available
     if is_time_slot_available(date, time_slot, employee):
-        add_appointment(user_id, first_name, last_name, service, employee, date, time_slot)
-
-        # Save user details in context for later use
         context.user_data['user_id'] = user_id
         context.user_data['first_name'] = first_name
         context.user_data['last_name'] = last_name
+        context.user_data['service'] = service
+        context.user_data['employee'] = employee
+        context.user_data['date'] = date
+        context.user_data['price'] = price
 
-        await query.edit_message_text(text="Please provide your email address for the appointment confirmation:")
-        return EMAIL_INPUT
+        # Check if user email exists in Firestore
+        user_ref = db.collection('users').document(str(user_id))
+        user_doc = user_ref.get()
+        if user_doc.exists:
+            user_email = user_doc.to_dict().get('email')
+            context.user_data['email'] = user_email
+
+            keyboard = [
+                [
+                    InlineKeyboardButton("Usar e-mail salvo", callback_data='use_saved_email'),
+                    InlineKeyboardButton("Fornecer novo e-mail", callback_data='provide_new_email')
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                text="Já temos um e-mail salvo para você. Deseja usar este e-mail ou fornecer um novo?",
+                reply_markup=reply_markup
+            )
+            return EMAIL_CHOICE
+        else:
+            await query.edit_message_text(text="Por favor, forneça seu endereço de e-mail para a confirmação do agendamento:")
+            return EMAIL_INPUT
     else:
         response = f"Desculpe, o horário {time_slot} no dia {date} com {employee} já está ocupado. Por favor, escolha outro horário."
         await query.edit_message_text(text=response)
         return ConversationHandler.END
 
+
+async def handle_email_choice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'use_saved_email':
+        email = context.user_data['email']
+        await finalize_appointment(update, context, email)
+    else:
+        await query.edit_message_text(text="Por favor, forneça seu endereço de e-mail para a confirmação do agendamento:")
+        return EMAIL_INPUT
+
 async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_email = update.message.text
     context.user_data['email'] = user_email
+    await finalize_appointment(update, context, user_email)
 
+
+async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE, email):
     service = context.user_data['service']
     price = context.user_data['price']
-    date = context.user_data['date'].strftime("%Y-%m-%d")
+    date = context.user_data['date']
     time_slot = context.user_data['time']
     employee = context.user_data['employee']
     user_id = context.user_data['user_id']
     first_name = context.user_data['first_name']
     last_name = context.user_data['last_name']
+
+    add_appointment(user_id, first_name, last_name, service, employee, date, time_slot, email)
 
     # Save the appointment to Google Calendar
     start_time = datetime.datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %H:%M")
@@ -443,7 +507,7 @@ async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
         },
         'attendees': [
             {'email': employee_emails.get(employee.lower())},
-            {'email': user_email},
+            {'email': email},
         ],
     }
 
@@ -451,10 +515,15 @@ async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE)
     event = calendar_service.events().insert(calendarId='primary', body=event).execute()
     print(f'Event created: {event.get("htmlLink")}')
 
-    response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {user_email}."
-    await update.message.reply_text(text=response)
-    return ConversationHandler.END
+    response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {email}."
 
+    # Check if we're dealing with a callback query or a new message
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=response)
+    else:
+        await update.message.reply_text(text=response)
+
+    return ConversationHandler.END
 
 
 async def view_appointments_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -571,6 +640,7 @@ if __name__ == "__main__":
             CHOOSING_EMPLOYEE: [CallbackQueryHandler(employee_callback)],
             CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
             CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)],
+            EMAIL_CHOICE: [CallbackQueryHandler(handle_email_choice)],  # Added EMAIL_CHOICE state
             EMAIL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input)],
         },
         fallbacks=[CommandHandler('cancel', cancel_command)]  # Add cancel command as fallback
@@ -604,6 +674,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler('view_appointments', view_appointments_command))
     app.add_handler(CommandHandler('cancel_appointment', cancel_appointment_command))  # Add handler for cancel appointment
     app.add_handler(CallbackQueryHandler(handle_cancel_appointment, pattern='^cancel_'))  # Add handler for cancel appointment button
+    app.add_handler(CommandHandler('generate_report', generate_report_command))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error)

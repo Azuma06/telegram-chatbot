@@ -3,7 +3,7 @@
 
 - [x] selecionar funcionario
 
-- [ ] conectar com google calendar
+- [X] conectar com google calendar
 
 - [ ] reports mensair (pdf?)
 

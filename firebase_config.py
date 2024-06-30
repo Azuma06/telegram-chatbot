@@ -13,7 +13,7 @@ db = firestore.client()
 
 
 # Add an appointment to Firestore
-def add_appointment(user_id, first_name, last_name, service, employee, date, time):
+def add_appointment(user_id, first_name, last_name, service, employee, date, time, email):
     appointments_ref = db.collection('appointments')
     appointments_ref.add({
         'user_id': user_id,
@@ -22,8 +22,17 @@ def add_appointment(user_id, first_name, last_name, service, employee, date, tim
         'service': service,
         'employee': employee,
         'date': date,
-        'time': time
+        'time': time,
+        'email': email
     })
+
+    # Save the email to a separate collection if not already present
+    user_ref = db.collection('users').document(str(user_id))
+    user_ref.set({
+        'first_name': first_name,
+        'last_name': last_name,
+        'email': email
+    }, merge=True)
 
 
 # Check if a time slot is available
