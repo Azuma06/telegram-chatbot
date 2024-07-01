@@ -61,10 +61,10 @@ CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDA
 async def generate_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Check if the user has permission to generate reports
     if update.effective_user.id != OWNER_USER_ID:
-        await update.message.reply_text("Sorry, you don't have permission to generate reports.")
+        await update.message.reply_text("Desculpe, você não tem permissão para gerar relatórios.")
         return
 
-    await update.message.reply_text("Generating this month's report. Please wait...")
+    await update.message.reply_text("Gerando o relatório deste mês. Por favor, aguarde...")
 
     try:
         # Generate the report
@@ -74,10 +74,10 @@ async def generate_report_command(update: Update, context: ContextTypes.DEFAULT_
         with open(report_file, 'rb') as file:
             await update.message.reply_document(document=file, filename=report_file)
 
-        await update.message.reply_text("Report for the current month generated and sent successfully!")
+        await update.message.reply_text("Relatório do mês atual gerado e enviado com sucesso!")
     except Exception as e:
-        await update.message.reply_text(f"An error occurred while generating the report: {str(e)}")
-        print(f"Error in generate_report_command: {str(e)}")
+        await update.message.reply_text(f"Ocorreu um erro ao gerar o relatório: {str(e)}")
+        print(f"Erro em generate_report_command: {str(e)}")
 
 
 def get_calendar_service():
@@ -495,7 +495,7 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
 
     event = {
         'summary': f'{service} com {employee}',
-        'location': 'Your location',
+        'location': 'Av. Pres. Lucena, 2439 - Brasília, Ivoti - RS, 93900-000',
         'description': f'Appointment for {service} com {employee}',
         'start': {
             'dateTime': start_time.isoformat(),
@@ -532,7 +532,7 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
     if user_id == OWNER_USER_ID:
         appointments = fetch_appointments()
         if appointments:
-            response = "Here are the upcoming appointments:\n\n"
+            response = "Aqui estão seus próximos horários:\n\n"
             for appointment in appointments:
                 response += (
                     f"User: {appointment['first_name']} {appointment['last_name']} ({appointment['user_id']})\n"
@@ -540,20 +540,20 @@ async def view_appointments_command(update: Update, context: ContextTypes.DEFAUL
                     f"Date: {appointment['date']}\n"
                     f"Time: {appointment['time']}\n\n")
         else:
-            response = "No appointments found."
+            response = "Nenhum horário encontrado."
 
         await update.message.reply_text(response)
     else:
         # Fetch only user's appointments
         user_appointments = fetch_appointments(user_id=user_id)
         if user_appointments:
-            response = "Here are your upcoming appointments:\n\n"
+            response = "Aqui estão seus próximos horários:\n\n"
             for appointment in user_appointments:
                 response += (f"Service: {appointment['service']}\n"
                              f"Date: {appointment['date']}\n"
                              f"Time: {appointment['time']}\n\n")
         else:
-            response = "You have no appointments."
+            response = "Nenhum horário encontrado."
 
         await update.message.reply_text(response)
 
@@ -564,7 +564,7 @@ async def cancel_appointment_command(update: Update, context: ContextTypes.DEFAU
     # Fetch user's appointments
     appointments = fetch_appointments(user_id=user_id)
     if not appointments:
-        await update.message.reply_text("You have no appointments to cancel.")
+        await update.message.reply_text("Você não tem horários para cancelar")
         return
 
     # Display user's appointments with options to cancel
@@ -574,7 +574,7 @@ async def cancel_appointment_command(update: Update, context: ContextTypes.DEFAU
         for appointment in appointments
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Select an appointment to cancel:', reply_markup=reply_markup)
+    await update.message.reply_text('Selecione um horário para cancelar:', reply_markup=reply_markup)
 
 
 async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -583,7 +583,7 @@ async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
 
     appointment_id = query.data[7:]  # remove the "cancel_" prefix
     delete_appointment(appointment_id)
-    await query.edit_message_text(text="Your appointment has been canceled.")
+    await query.edit_message_text(text="Seu horário foi cancelado.")
 
 
 # responses

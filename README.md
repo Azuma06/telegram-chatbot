@@ -23,6 +23,8 @@
 
 - [x] alert admin that an appointment was created by someone 
 
+- []  cancel appointment not cancelling on google calendar, only internal db
+
 # Telegram Appointment Bot
 
 This is a Telegram bot for scheduling appointments using Firebase as the backend database.
