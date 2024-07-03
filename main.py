@@ -5,7 +5,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import calendar
 import datetime
 from datetime import timedelta
-from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment, credentials, firebase_admin, firestore
+from firebase_config import add_appointment, is_time_slot_available, fetch_appointments, delete_appointment, credentials, firebase_admin, firestore, get_calendar_event_id
 import pickle
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -55,7 +55,7 @@ EMPLOYEES = {
 }
 
 # Define conversation states
-CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY, TIME_SELECTION, EMAIL_INPUT, EMAIL_CHOICE, EMAIL_INPUT = range(10)
+CHOOSING_SERVICE, CHOOSING_DATE, CHOOSING_TIME, CHOOSING_EMPLOYEE, ADDING_HOLIDAY, DELETING_HOLIDAY, TIME_SELECTION, EMAIL_INPUT, EMAIL_CHOICE, CONFIRMATION = range(10)
 
 
 async def generate_report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,7 +258,7 @@ async def cancel_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # to show "processing..." to the user
+    await query.answer()
 
     service_key = query.data
     if service_key in SERVICES:
@@ -427,10 +427,6 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data['user_id'] = user_id
         context.user_data['first_name'] = first_name
         context.user_data['last_name'] = last_name
-        context.user_data['service'] = service
-        context.user_data['employee'] = employee
-        context.user_data['date'] = date
-        context.user_data['price'] = price
 
         # Check if user email exists in Firestore
         user_ref = db.collection('users').document(str(user_id))
@@ -450,7 +446,7 @@ async def handle_time_selection(update: Update, context: ContextTypes.DEFAULT_TY
                 text="Já temos um e-mail salvo para você. Deseja usar este e-mail ou fornecer um novo?",
                 reply_markup=reply_markup
             )
-            return EMAIL_CHOICE
+            return EMAIL_INPUT
         else:
             await query.edit_message_text(text="Por favor, forneça seu endereço de e-mail para a confirmação do agendamento:")
             return EMAIL_INPUT
@@ -466,7 +462,8 @@ async def handle_email_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     if query.data == 'use_saved_email':
         email = context.user_data['email']
-        await finalize_appointment(update, context, email)
+        await query.edit_message_text(text=f"Confirmando agendamento com o email: {email}")
+        return await finalize_appointment(update, context, email)
     else:
         await query.edit_message_text(text="Por favor, forneça seu endereço de e-mail para a confirmação do agendamento:")
         return EMAIL_INPUT
@@ -474,7 +471,8 @@ async def handle_email_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_email = update.message.text
     context.user_data['email'] = user_email
-    await finalize_appointment(update, context, user_email)
+    await update.message.reply_text(f"Confirmando agendamento com o email: {user_email}")
+    return await finalize_appointment(update, context, user_email)
 
 
 async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE, email):
@@ -487,10 +485,14 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
     first_name = context.user_data['first_name']
     last_name = context.user_data['last_name']
 
-    add_appointment(user_id, first_name, last_name, service, employee, date, time_slot, email)
+    # Convert date to string if it's a datetime.date object
+    if isinstance(date, datetime.date):
+        date_str = date.strftime("%Y-%m-%d")
+    else:
+        date_str = date
 
     # Save the appointment to Google Calendar
-    start_time = datetime.datetime.strptime(f"{date} {time_slot}", "%Y-%m-%d %H:%M")
+    start_time = datetime.datetime.strptime(f"{date_str} {time_slot}", "%Y-%m-%d %H:%M")
     end_time = start_time + datetime.timedelta(hours=1)  # assuming the appointment is 1 hour long
 
     event = {
@@ -499,7 +501,7 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
         'description': f'Appointment for {service} com {employee}',
         'start': {
             'dateTime': start_time.isoformat(),
-            'timeZone': 'America/Sao_Paulo',  # Adjust this to your timezone
+            'timeZone': 'America/Sao_Paulo',
         },
         'end': {
             'dateTime': end_time.isoformat(),
@@ -513,15 +515,24 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
 
     calendar_service = get_calendar_service()
     event = calendar_service.events().insert(calendarId='primary', body=event).execute()
-    print(f'Event created: {event.get("htmlLink")}')
+    calendar_event_id = event['id']
 
-    response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {email}."
+    # Add the appointment to Firestore with the calendar event ID
+    success = add_appointment(user_id, first_name, last_name, service, employee, date_str, time_slot, email, calendar_event_id)
+
+    if success:
+        response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date_str} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {email}."
+    else:
+        response = f"Desculpe, ocorreu um erro ao agendar seu compromisso. Por favor, tente novamente mais tarde."
 
     # Check if we're dealing with a callback query or a new message
-    if update.callback_query:
-        await update.callback_query.edit_message_text(text=response)
+    if isinstance(update, Update):
+        if update.callback_query:
+            await update.callback_query.edit_message_text(text=response)
+        else:
+            await update.message.reply_text(text=response)
     else:
-        await update.message.reply_text(text=response)
+        await context.bot.send_message(chat_id=user_id, text=response)
 
     return ConversationHandler.END
 
@@ -582,7 +593,21 @@ async def handle_cancel_appointment(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
 
     appointment_id = query.data[7:]  # remove the "cancel_" prefix
+
+    # Get the Google Calendar event ID before deleting the appointment
+    calendar_event_id = get_calendar_event_id(appointment_id)
+
+    if calendar_event_id:
+        # Delete the event from Google Calendar
+        calendar_service = get_calendar_service()
+        try:
+            calendar_service.events().delete(calendarId='primary', eventId=calendar_event_id).execute()
+        except Exception as e:
+            print(f"Error deleting Google Calendar event: {e}")
+
+    # Delete the appointment from Firestore
     delete_appointment(appointment_id)
+
     await query.edit_message_text(text="Seu horário foi cancelado.")
 
 
@@ -640,10 +665,12 @@ if __name__ == "__main__":
             CHOOSING_EMPLOYEE: [CallbackQueryHandler(employee_callback)],
             CHOOSING_DATE: [CallbackQueryHandler(handle_calendar)],
             CHOOSING_TIME: [CallbackQueryHandler(handle_time_selection)],
-            EMAIL_CHOICE: [CallbackQueryHandler(handle_email_choice)],  # Added EMAIL_CHOICE state
-            EMAIL_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input)],
+            EMAIL_INPUT: [
+                CallbackQueryHandler(handle_email_choice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, handle_email_input)
+            ],
         },
-        fallbacks=[CommandHandler('cancel', cancel_command)]  # Add cancel command as fallback
+        fallbacks=[CommandHandler('cancel', cancel_command)]
     )
 
     # Set up conversation handler for adding holidays
