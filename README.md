@@ -23,7 +23,7 @@
 
 - [x] alert admin that an appointment was created by someone 
 
-- []  cancel appointment not cancelling on google calendar, only internal db
+- [x] cancel appointment not cancelling on google calendar, only internal db
 
 # Telegram Appointment Bot
 
