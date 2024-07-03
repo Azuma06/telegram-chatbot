@@ -1,4 +1,6 @@
 from typing import Final
+
+from googleapiclient.errors import HttpError
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler, \
     ConversationHandler
@@ -13,6 +15,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 import os.path
 from report_generator import generate_last_month_report
+import re
 
 
 db = firestore.client()
@@ -468,11 +471,19 @@ async def handle_email_choice(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(text="Por favor, forneça seu endereço de e-mail para a confirmação do agendamento:")
         return EMAIL_INPUT
 
+def is_valid_email(email):
+    pattern = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+    return re.match(pattern, email) is not None
+
 async def handle_email_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_email = update.message.text
-    context.user_data['email'] = user_email
-    await update.message.reply_text(f"Confirmando agendamento com o email: {user_email}")
-    return await finalize_appointment(update, context, user_email)
+    if is_valid_email(user_email):
+        context.user_data['email'] = user_email
+        await update.message.reply_text(f"Confirmando agendamento com o email: {user_email}")
+        return await finalize_appointment(update, context, user_email)
+    else:
+        await update.message.reply_text("O email fornecido parece ser inválido. Por favor, forneça um endereço de email válido.")
+        return EMAIL_INPUT
 
 
 async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE, email):
@@ -485,15 +496,13 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
     first_name = context.user_data['first_name']
     last_name = context.user_data['last_name']
 
-    # Convert date to string if it's a datetime.date object
     if isinstance(date, datetime.date):
         date_str = date.strftime("%Y-%m-%d")
     else:
         date_str = date
 
-    # Save the appointment to Google Calendar
     start_time = datetime.datetime.strptime(f"{date_str} {time_slot}", "%Y-%m-%d %H:%M")
-    end_time = start_time + datetime.timedelta(hours=1)  # assuming the appointment is 1 hour long
+    end_time = start_time + datetime.timedelta(hours=1)
 
     event = {
         'summary': f'{service} com {employee}',
@@ -514,18 +523,23 @@ async def finalize_appointment(update: Update, context: ContextTypes.DEFAULT_TYP
     }
 
     calendar_service = get_calendar_service()
-    event = calendar_service.events().insert(calendarId='primary', body=event).execute()
-    calendar_event_id = event['id']
+    try:
+        event = calendar_service.events().insert(calendarId='primary', body=event).execute()
+        calendar_event_id = event['id']
 
-    # Add the appointment to Firestore with the calendar event ID
-    success = add_appointment(user_id, first_name, last_name, service, employee, date_str, time_slot, email, calendar_event_id)
+        success = add_appointment(user_id, first_name, last_name, service, employee, date_str, time_slot, email, calendar_event_id)
 
-    if success:
-        response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date_str} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {email}."
-    else:
-        response = f"Desculpe, ocorreu um erro ao agendar seu compromisso. Por favor, tente novamente mais tarde."
+        if success:
+            response = f"Ótimo! Você agendou {service} por R${price} com {employee} no dia {date_str} às {time_slot}. Esperamos você! Um convite foi enviado para seu email {email}."
+        else:
+            response = f"Desculpe, ocorreu um erro ao agendar seu compromisso. Por favor, tente novamente mais tarde."
+    except HttpError as e:
+        if "Invalid attendee email" in str(e):
+            response = f"Desculpe, o endereço de e-mail fornecido ({email}) parece ser inválido. Por favor, verifique o e-mail e tente novamente."
+        else:
+            response = f"Desculpe, ocorreu um erro ao agendar seu compromisso. Por favor, tente novamente mais tarde."
+        print(f"Error adding event to Google Calendar: {e}")
 
-    # Check if we're dealing with a callback query or a new message
     if isinstance(update, Update):
         if update.callback_query:
             await update.callback_query.edit_message_text(text=response)

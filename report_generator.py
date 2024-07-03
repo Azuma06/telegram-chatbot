@@ -5,6 +5,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
 from reportlab.lib.styles import getSampleStyleSheet
 from firebase_admin import firestore
 
+
 def generate_last_month_report():
     # Initialize Firestore client
     db = firestore.client()
@@ -26,13 +27,24 @@ def generate_last_month_report():
     data = [['Date', 'Time', 'Service', 'Employee', 'Customer', 'Price']]
     total_revenue = 0
 
+    # Define price mapping
+    price_mapping = {
+        'corte': 50,
+        'hidratacao': 40,
+        'manicure': 30,
+        'pedicure': 40,
+        'tintura': 70
+    }
+
     for appt in appointments:
         appt_data = appt.to_dict()
-        price = appt_data.get('price', 0)  # Default to 0 if price is not present
+        service = appt_data.get('service', 'N/A')
+        price = price_mapping.get(service.lower(), 0)  # Default to 0 if service not found
+
         data.append([
             appt_data.get('date', 'N/A'),
             appt_data.get('time', 'N/A'),
-            appt_data.get('service', 'N/A'),
+            service,
             appt_data.get('employee', 'N/A'),
             f"{appt_data.get('first_name', 'N/A')} {appt_data.get('last_name', 'N/A')}",
             f"R${price}"
@@ -73,9 +85,9 @@ def generate_last_month_report():
 
     # Build the PDF
     doc.build(elements)
-
     print(f"Report generated: {pdf_filename}")
     return pdf_filename
+
 
 if __name__ == "__main__":
     generate_last_month_report()
